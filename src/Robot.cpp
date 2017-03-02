@@ -30,6 +30,7 @@ public:
             encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
             encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
             DistanceIN = 0;
+            spearSwitch = false;
             	}
 
 
@@ -58,12 +59,14 @@ private:
 	int count;
 	double distanceTraveled, distanceTraveled2;
 	double DistanceIN;
+	bool spearSwitch;
+	bool HaveTurned;
 
 	void AutonomousInit() override {
 		timer.Reset();
-
+		gyro->Calibrate();
 		timer.Start();
-
+		HaveTurned = false;
 		encoder->SetDistancePerPulse(1);
 		encoder2->SetDistancePerPulse(1);
 		encoder->Reset();
@@ -73,7 +76,11 @@ private:
 
 	void AutonomousPeriodic() override {
 		// Drive for 2 seconds
-		Original(480);
+		//Original(480);
+		if (! HaveTurned){
+			Turn(90);
+			HaveTurned = true;
+		}
 	}
 
 	void Log() {
@@ -91,7 +98,8 @@ private:
 		double a, b, value;
 		a = encoder->GetDistance();
 		b = encoder2->GetDistance();
-		value = (a+b)/-200;
+		//value = (a+b)/-200; //competition robot
+		value = (a+b)/200; //Practice robot
 
 		return value;
 
@@ -136,16 +144,16 @@ private:
 
 //Flip motors with camera direction
            if(cameraDirection == 1){
-        	   myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
-        	  // myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,stick.GetX()*precisionSpeed);// practice bot
+        	   //myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
+        	   myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// practice bot
 
         	   //frc::Wait(.004);
 
            }
 
            else if(cameraDirection != 1){
-        	   myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
-        	   //myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed); //practice bot
+        	   //myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
+        	   myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed); //practice bot
         	  // frc::Wait(.004);
            }
 
@@ -220,6 +228,14 @@ private:
 				winch_motor.Set(0);
 			}
 
+//Spring Spear Limit Switch
+			if(limitSwitch->Get()){
+				spearSwitch = true;
+			}
+			else{
+				spearSwitch = false;
+			}
+
 
 	}
 	void TestPeriodic() override {
@@ -246,6 +262,26 @@ private:
 
 
 	}
+
+
+	void Turn(float angle)
+	{
+		gyro->Reset();
+		float targetHeading = gyro->GetAngle() + angle;
+		while  (fabs(targetHeading - gyro->GetAngle()) > 0.5)
+		{
+		//TODO Flip negative and positive for competition
+			myRobot.ArcadeDrive(0.0, (angle < 0.0)? 0.5: -0.5);
+			if (count++ == 1000){
+		std::cout << "angle in while " << gyro->GetAngle() << std::endl;
+			count = 0;
+			}
+			//frc::Wait(.04);
+
+		}
+		myRobot.ArcadeDrive(0.0, 0.0);
+	}
+
 	void Original( double TotalDist) {
 		double featherValue = Feather(TotalDist, DistanceIN);
 		myRobot.Drive(0.40 * featherValue, Straighten());
