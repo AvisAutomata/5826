@@ -18,19 +18,20 @@ class Robot: public frc::IterativeRobot {
 public:
 	ADXRS450_Gyro* gyro;
     frc::DigitalInput* limitSwitch;
+    frc::DigitalOutput* indicatorLights;
     Encoder *encoder, *encoder2;
 
 	void RobotInit() {
 			CameraServer::GetInstance()->StartAutomaticCapture();
 			 limitSwitch = new frc::DigitalInput(4);
+			 indicatorLights = new frc::DigitalOutput(8);
 
 		 	//frc::Wait(kUpdatePeriod);  Wait 5ms for the next update.
             gyro = new ADXRS450_Gyro(frc::SPI::Port::kOnboardCS0);
             gyro->Calibrate();
             encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
             encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
-            DistanceIN = 0;
-            spearSwitch = false;
+            indicatorLights->DisablePWM();
             	}
 
 
@@ -58,11 +59,11 @@ private:
 	double precisionSpeed;
 	int count;
 	double distanceTraveled, distanceTraveled2;
-	double DistanceIN;
-	bool spearSwitch;
+	bool autoComplete;
 	bool HaveTurned;
 
 	void AutonomousInit() override {
+		autoComplete = false;
 		timer.Reset();
 		gyro->Calibrate();
 		timer.Start();
@@ -71,25 +72,60 @@ private:
 		encoder2->SetDistancePerPulse(1);
 		encoder->Reset();
 		encoder2->Reset();
+		enableLights(true);
+		ResetServos();
 
 	}
 
 	void AutonomousPeriodic() override {
 		// Drive for 2 seconds
-		//Original(480);
-		if (! HaveTurned){
-			Turn(90);
-			HaveTurned = true;
+			if(! autoComplete){
+			Drive(100, 0.40, false);
+			Drive(15, 0.25, true);
+			//Got limit switch
+			//no-do nothing
+			//yes-open servos, wait
+			//kick gearServo
+			//reverse
+			//close arms and gearServo
+			if (IsSwitchPress()){
+				OpenServo();
+				KickGear();
+				frc::Wait(0.4);
+				Drive(-36, -0.30, false);
+				ResetServos();
+				Turn(-90);
+				Drive(120, 0.40, false);
+				Turn(90);
+				Drive(120, 0.40, false);
+				Turn(180);
+
+
+			}
+
+			autoComplete = true;
 		}
+
 	}
-
+	void ResetServos(){
+		gateServoLeft->SetAngle(160);
+		gateServoRight->SetAngle(0);
+		gearServo->SetAngle(10);
+	}
+	void KickGear(){
+		gearServo->SetAngle(90);
+	}
+	void OpenServo(){
+		gateServoLeft->SetAngle(85);
+	   	gateServoRight->SetAngle(90);
+	}
 	void Log() {
-
+		/*
 		std::cout << "\nEncoder 1: " << encoder->GetRate() << "\n";
 		std::cout << "Encoder 2: " << encoder2->GetRate() << "\n";
 		std::cout << "Encoder 1 Distance: " << encoder->GetDistance() << "\n";
 		std::cout << "Encoder 2 Distance: " << encoder2->GetDistance() << "\n";
-		std::cout << "Encoder Distance in Inches " << DistanceIN << "\n";
+		*/
 
 
 	}
@@ -115,6 +151,7 @@ private:
         myRobot.ArcadeDrive(stick);
         myRobot.SetExpiration(0.1);
         count = 0;
+
 	}
 
 
@@ -229,12 +266,7 @@ private:
 			}
 
 //Spring Spear Limit Switch
-			if(limitSwitch->Get()){
-				spearSwitch = true;
-			}
-			else{
-				spearSwitch = false;
-			}
+		checkSpear();
 
 
 	}
@@ -268,48 +300,64 @@ private:
 	{
 		gyro->Reset();
 		float targetHeading = gyro->GetAngle() + angle;
-		while  (fabs(targetHeading - gyro->GetAngle()) > 0.5)
+
+		float remainingTurn = targetHeading - gyro->GetAngle();
+
+		while  (fabs(remainingTurn) > 0.05)  // we are within .5 degrees
 		{
 		//TODO Flip negative and positive for competition
-			myRobot.ArcadeDrive(0.0, (angle < 0.0)? 0.5: -0.5);
-			if (count++ == 1000){
-		std::cout << "angle in while " << gyro->GetAngle() << std::endl;
-			count = 0;
+			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? 0.45: -0.45);
+
+			frc::Wait(.02);
+			remainingTurn = targetHeading - gyro->GetAngle();
+			std::cout << remainingTurn << std::endl;
+
+		}
+		Stop();
+	}
+
+	void Drive( double TotalDist, double speed, bool spearArmed) {
+		double featherValue;
+		do {
+			featherValue = Feather(TotalDist, RecalcDistance());
+			double s = speed * featherValue;
+			if (s >= 0 ){
+				myRobot.Drive(s, 1*Straighten());
 			}
-			//frc::Wait(.04);
+			else{
+				myRobot.Drive(s, -1*Straighten());
 
+			}
 		}
-		myRobot.ArcadeDrive(0.0, 0.0);
+
+		while (featherValue > 0.02 && !(spearArmed && IsSwitchPress()));
+		if (IsSwitchPress()) {
+			flashLights();
+		}
+		Stop();
 	}
-
-	void Original( double TotalDist) {
-		double featherValue = Feather(TotalDist, DistanceIN);
-		myRobot.Drive(0.40 * featherValue, Straighten());
-		/*if(DistanceIN < 330){
-			myRobot.Drive(0.50, Straighten()); // Drive forwards half speed
-		}
-		else if(DistanceIN < 360) {
-			myRobot.Drive(0.25, Straighten());
-		}
-		else if(DistanceIN > 362) {
-			myRobot.Drive(-0.10, Straighten());
-
-		}*/
-		RecalcDistance();
-
-
-	}
-	void RecalcDistance() {
-		double Dist;
-		Dist = encoder->GetDistance();
-		DistanceIN = Dist /6.325;
+	double RecalcDistance() {
+		//double Dist;
+		double DistanceIN;
+		//Dist = encoder->GetDistance();
+		DistanceIN = encoder->GetDistance() /6.325;
 		if (count++ == 25) {
 			Log();
 			count = 0;
 		}
+		return DistanceIN;
+
+
 	}
 
-	/*void Original() {
+	void Stop(){
+		myRobot.Drive(0.0, 0.0);
+		frc::Wait(1);
+		encoder->Reset();
+		encoder2->Reset();
+	}
+
+	/*void () {
 		// Drive for 2 seconds
 		if (timer.Get() < 5.0) {
 			myRobot.Drive(0.25, Straighten()); // Drive forwards half speed
@@ -345,6 +393,36 @@ private:
 			count = 0;
 		}
 	}*/
+
+
+
+	bool IsSwitchPress(){
+		return !limitSwitch->Get();
+		//Switch is backwards on proto
+	}
+
+	void flashLights(){
+		for(int i = 0; i < 5; i++){
+			enableLights(true);
+			frc::Wait(0.1);
+			enableLights(false);
+			frc::Wait(0.1);
+		}
+	}
+
+	void enableLights(bool onOff){
+		indicatorLights->Set(onOff);
+	}
+	bool checkSpear() {
+		//Spring Spear Limit Switch
+		if (IsSwitchPress()) {
+			enableLights(true);
+			return true;
+		} else {
+			enableLights(false);
+			return false;
+		}
+	}
 };
 
 START_ROBOT_CLASS(Robot)
