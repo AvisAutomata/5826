@@ -65,7 +65,7 @@ private:
 	void AutonomousInit() override {
 		autoComplete = false;
 		timer.Reset();
-		gyro->Calibrate();
+		//gyro->Calibrate();
 		timer.Start();
 		HaveTurned = false;
 		encoder->SetDistancePerPulse(1);
@@ -75,49 +75,66 @@ private:
 		enableLights(true);
 		ResetServos();
 
+
 	}
 
 	void AutonomousPeriodic() override {
 		// Drive for 2 seconds
-			if(! autoComplete){
-			Drive(100, 0.40, false);
-			Drive(15, 0.25, true);
-			//Got limit switch
-			//no-do nothing
-			//yes-open servos, wait
-			//kick gearServo
-			//reverse
-			//close arms and gearServo
-			if (IsSwitchPress()){
+		if(! autoComplete){
+			Drive(33, 0.40, false);
+			Turn(-38);
+			Drive(50, 0.40, false);
+			Drive(16, 0.25, true);
+
+			if (IsSwitchPress()) {
 				OpenServo();
 				KickGear();
-				frc::Wait(0.4);
-				Drive(-36, -0.30, false);
+				frc::Wait(0.1);
+				Drive(-24, -0.45, false);
 				ResetServos();
-				Turn(-90);
-				Drive(120, 0.40, false);
-				Turn(90);
-				Drive(120, 0.40, false);
-				Turn(180);
-
 
 			}
 
 			autoComplete = true;
 		}
 
+
 	}
+
+	void AutoStraight(){
+		// Drive for 2 seconds
+		if (!autoComplete) {
+			Drive(66, 0.60, false);
+			Drive(12, 0.25, true);
+
+			if (IsSwitchPress()) {
+				OpenServo();
+				KickGear();
+				frc::Wait(0.1);
+				Drive(-24, -0.45, false);
+				ResetServos();
+				Turn(45);
+				Drive(-12, -0.40, false);
+
+			}
+
+			autoComplete = true;
+		}
+
+
+	}
+
 	void ResetServos(){
-		gateServoLeft->SetAngle(160);
-		gateServoRight->SetAngle(0);
+		gateServoLeft->SetAngle(85);
+		gateServoRight->SetAngle(90);
 		gearServo->SetAngle(10);
 	}
 	void KickGear(){
 		gearServo->SetAngle(90);
 	}
 	void OpenServo(){
-		gateServoLeft->SetAngle(85);
-	   	gateServoRight->SetAngle(90);
+		gateServoLeft->SetAngle(160);
+	   	gateServoRight->SetAngle(0);
 	}
 	void Log() {
 		/*
@@ -308,7 +325,7 @@ private:
 		//TODO Flip negative and positive for competition
 			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? 0.45: -0.45);
 
-			frc::Wait(.02);
+			frc::Wait(.01);
 			remainingTurn = targetHeading - gyro->GetAngle();
 			std::cout << remainingTurn << std::endl;
 
@@ -352,7 +369,7 @@ private:
 
 	void Stop(){
 		myRobot.Drive(0.0, 0.0);
-		frc::Wait(1);
+		frc::Wait(.1);
 		encoder->Reset();
 		encoder2->Reset();
 	}
