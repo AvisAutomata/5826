@@ -13,6 +13,8 @@
 #include <iostream>
 #include <Encoder.h>
 #include <VictorSP.h>
+#include <CANTalon.h>
+
 
 class Robot: public frc::IterativeRobot {
 public:
@@ -20,19 +22,30 @@ public:
     frc::DigitalInput* limitSwitch;
     frc::DigitalOutput* indicatorLights;
     Encoder *encoder, *encoder2;
+    int mode; // initialize default mode
+    int one = 1;
+    int two = 2;
+    int three = 3;
+    SendableChooser<int*> *chooser;
 
 	void RobotInit() {
-			CameraServer::GetInstance()->StartAutomaticCapture();
-			 limitSwitch = new frc::DigitalInput(4);
-			 indicatorLights = new frc::DigitalOutput(8);
+		CameraServer::GetInstance()->StartAutomaticCapture();
+		limitSwitch = new frc::DigitalInput(4);
+		indicatorLights = new frc::DigitalOutput(8);
 
-		 	//frc::Wait(kUpdatePeriod);  Wait 5ms for the next update.
-            gyro = new ADXRS450_Gyro(frc::SPI::Port::kOnboardCS0);
-            gyro->Calibrate();
-            encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
-            encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
-            indicatorLights->DisablePWM();
-            	}
+		//frc::Wait(kUpdatePeriod);  Wait 5ms for the next update.
+		gyro = new ADXRS450_Gyro(frc::SPI::Port::kOnboardCS0);
+		gyro->Calibrate();
+		encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
+		encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
+		indicatorLights->DisablePWM();
+		chooser = new SendableChooser<int*>();
+		chooser->AddDefault("On Left",&one);
+		chooser->AddObject("On Right",&two);
+		chooser->AddObject("Straight", &three);
+		frc::SmartDashboard::PutData("Autonomous Selector", chooser);
+
+	}
 
 
 private:
@@ -42,13 +55,14 @@ private:
 	frc::Timer timer;
 	frc::Servo* cameraServo = new Servo(8);
     frc::Joystick m_stick { 0 };
-    //frc::RobotDrive    { 1, 2, 3, 4 };
     frc::Servo* gateServoLeft =  new Servo(9);
     frc::Servo* gateServoRight =  new Servo(0);
     frc::Servo* gearServo =  new Servo(5);
     frc::Talon winch_motor { 6 };
-    frc::Talon m2_motor  { 7 };
-    frc::Talon ball_Shooter { 7 };
+   // frc::Talon m2_motor  { 7 };
+    CanTalonSRX  ball_Shooter { 2 };
+    CanTalonSRX ball_Launcher { 1 };
+
     frc::AnalogInput ultrasonic { 0 };
     static constexpr double kAngleSetpoint = 0.0;
     static constexpr double kVoltsPerDegreePerSecond = 0.0128;
@@ -62,6 +76,7 @@ private:
 	bool autoComplete;
 	bool HaveTurned;
 
+
 	void AutonomousInit() override {
 		autoComplete = false;
 		timer.Reset();
@@ -74,17 +89,29 @@ private:
 		encoder2->Reset();
 		enableLights(true);
 		ResetServos();
+		//mode = 1;
+
+		mode =  (int)chooser->GetSelected();
 
 
 	}
 
+
 	void AutonomousPeriodic() override {
-		// Drive for 2 seconds
-		if(! autoComplete){
-			Drive(33, 0.40, false);
-			Turn(-38);
-			Drive(50, 0.40, false);
-			Drive(16, 0.25, true);
+
+		AutoStraight(false);
+	}
+	//Line inner wheels up 4ft from center
+	void AutoAngle(bool onLeft){
+		if (!autoComplete) {
+			Drive(65, 0.45, false);
+			if (onLeft) {
+				Turn(39);
+			}
+			else {
+				Turn(-41);
+			}
+			Drive(25, 0.30, true);
 
 			if (IsSwitchPress()) {
 				OpenServo();
@@ -92,31 +119,70 @@ private:
 				frc::Wait(0.1);
 				Drive(-24, -0.45, false);
 				ResetServos();
+				Drive(-20, -0.45, false);
+				ResetServos();
+				Turn(65);
+				Drive(-26, -0.40, false);
+				ball_Launcher.Set(-1);
+				Wait(.5);
+				ball_Shooter.Set(-1);
+				Wait(10);
+				ball_Launcher.Set(0);
+				ball_Shooter.Set(0);
 
 			}
 
 			autoComplete = true;
 		}
 
-
 	}
 
-	void AutoStraight(){
-		// Drive for 2 seconds
+	void AutoNoGear(){
 		if (!autoComplete) {
-			Drive(66, 0.60, false);
-			Drive(12, 0.25, true);
+			Drive(10, 0.45, false);
+			Turn(55, 0.5);
+			Drive(-10, -0.40, false);
+			ball_Launcher.Set(-1);
+			Wait(.5);
+			ball_Shooter.Set(-1);
+			Wait(10);
+			ball_Launcher.Set(0);
+			ball_Shooter.Set(0);
+		}
+
+		autoComplete = true;
+	}
+
+
+
+	void AutoStraight(bool BasketOnLeft){
+		if (!autoComplete) {
+			Drive(39, 0.55, false);
+			Drive(39, 0.25, true);
 
 			if (IsSwitchPress()) {
 				OpenServo();
 				KickGear();
 				frc::Wait(0.1);
-				Drive(-24, -0.45, false);
+				Drive(-20, -0.45, false);
 				ResetServos();
-				Turn(45);
-				Drive(-12, -0.40, false);
-
+				if (BasketOnLeft){
+					Turn(65);
+				}
+				else {
+					Turn(-65);
+				}
+				Drive(-26, -0.40, false);
+				if (timeLeft()) {
+					ball_Launcher.Set(-1);
+					Wait(.5);
+					ball_Shooter.Set(-1);
+					Wait(5);
+					ball_Launcher.Set(0);
+					ball_Shooter.Set(0);
+				}
 			}
+
 
 			autoComplete = true;
 		}
@@ -162,8 +228,7 @@ private:
 	void TeleopInit() override {
 		encoder->SetDistancePerPulse(1);
 		encoder2->SetDistancePerPulse(1);
-		cameraDirection = 1;
-		gyro->Calibrate();
+		cameraDirection = 2;
         precisionSpeed = 1;
         myRobot.ArcadeDrive(stick);
         myRobot.SetExpiration(0.1);
@@ -225,13 +290,22 @@ private:
 				cameraServo->SetAngle(180);     //reverse driving
 
 			}
-			if(m_stick.GetRawButton(2))
-			{
-				ball_Shooter.Set(1);
+
+		/*if (m_stick.GetRawButton(9)) {
+			ball_Shooter.Set(-1);
+		} else {
+			ball_Shooter.Set(0);
+		}*/
+
+		if (m_stick.GetRawButton(2)) {
+			ball_Launcher.Set(-1);
+			Wait(.5);
+			ball_Shooter.Set(-1);
 			}
 			else
 			{
 				ball_Shooter.Set(0);
+				ball_Launcher.Set(0);
 			}
 
 /**********************************************************************
@@ -312,18 +386,21 @@ private:
 
 	}
 
+	void Turn(float angle){
+		Turn(angle, 0.45);
 
-	void Turn(float angle)
+	}
+	void Turn(float angle, float speed)
 	{
 		gyro->Reset();
 		float targetHeading = gyro->GetAngle() + angle;
 
 		float remainingTurn = targetHeading - gyro->GetAngle();
 
-		while  (fabs(remainingTurn) > 0.05)  // we are within .5 degrees
+		while  (fabs(remainingTurn) > 0.05 && timeLeft())  // we are within .5 degrees
 		{
 		//TODO Flip negative and positive for competition
-			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? 0.45: -0.45);
+			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? speed: -1*speed);
 
 			frc::Wait(.01);
 			remainingTurn = targetHeading - gyro->GetAngle();
@@ -331,6 +408,14 @@ private:
 
 		}
 		Stop();
+	}
+
+	bool timeLeft(){
+		if (timer.Get() < 17.0 )
+			return true;
+		else {
+			return false;
+		}
 	}
 
 	void Drive( double TotalDist, double speed, bool spearArmed) {
@@ -347,7 +432,7 @@ private:
 			}
 		}
 
-		while (featherValue > 0.02 && !(spearArmed && IsSwitchPress()));
+		while (featherValue > 0.02 && !(spearArmed && IsSwitchPress()) && timeLeft());
 		if (IsSwitchPress()) {
 			flashLights();
 		}
@@ -373,45 +458,6 @@ private:
 		encoder->Reset();
 		encoder2->Reset();
 	}
-
-	/*void () {
-		// Drive for 2 seconds
-		if (timer.Get() < 5.0) {
-			myRobot.Drive(0.25, Straighten()); // Drive forwards half speed
-		} else if (timer.Get() < 6.0) {
-			myRobot.Drive(0.0, 0.0);
-		} else if (timer.Get() < 11.0) {
-			myRobot.Drive(-0.25, Straighten() * -1);
-		} else {
-			myRobot.Drive(0.0, 0.0); // Stop robot
-		}
-
-		if (count++ == 25) {
-			Log();
-			count = 0;
-		}
-		frc::Wait(0.04);
-	}*/
-
-
-	/*void ExtraCrispy() {
-		if (timer.Get() < 6.0) {
-			myRobot.TankDrive(.15, ); // Drive forwards half speed
-		} else if (timer.Get() < 7.0) {
-			myRobot.TankDrive(0.0, 0.0);
-		} else if (timer.Get() < 13.0) {
-			myRobot.TankDrive(-0.15, );
-		} else {
-			myRobot.TankDrive(0.0, 0.0); // Stop robot
-		}
-
-		if (count++ == 25) {
-			Log();
-			count = 0;
-		}
-	}*/
-
-
 
 	bool IsSwitchPress(){
 		return !limitSwitch->Get();
