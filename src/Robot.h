@@ -14,11 +14,9 @@
 #include <SmartDashboard/SendableChooser.h>
 #include <SmartDashboard/SmartDashboard.h>
 #include <AnalogGyro.h>
-#include "Commands/CameraLeft.h"
-#include "Commands/CameraRight.h"
-#include "CommandBase.h"
+
 #include "OI.h"
-#include "Subsystems/CameraSubsystem.h"
+
 
 class Robot: public frc::IterativeRobot {
 

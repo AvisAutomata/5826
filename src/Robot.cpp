@@ -19,19 +19,26 @@
 class Robot: public frc::IterativeRobot {
 public:
 	ADXRS450_Gyro* gyro;
-    frc::DigitalInput* limitSwitch;
+	 frc::DigitalInput* autocontrol1;
+	frc::DigitalInput* autocontrol2;
+	frc::DigitalInput* autocontrol3;
+	frc::DigitalInput* limitSwitch;
     frc::DigitalOutput* indicatorLights;
     Encoder *encoder, *encoder2;
-    int mode; // initialize default mode
-    int one = 1;
-    int two = 2;
-    int three = 3;
-    SendableChooser<int*> *chooser;
+    int automode;
+    bool towerLeft = true;
+    bool towerRight = false;
+    bool left = true;
+    bool right = false;
+
 
 	void RobotInit() {
 		CameraServer::GetInstance()->StartAutomaticCapture();
 		limitSwitch = new frc::DigitalInput(4);
 		indicatorLights = new frc::DigitalOutput(8);
+		autocontrol1 = new frc::DigitalInput(5);
+		autocontrol2 = new frc::DigitalInput(6);
+		autocontrol3 = new frc::DigitalInput(7);
 
 		//frc::Wait(kUpdatePeriod);  Wait 5ms for the next update.
 		gyro = new ADXRS450_Gyro(frc::SPI::Port::kOnboardCS0);
@@ -39,11 +46,6 @@ public:
 		encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
 		encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
 		indicatorLights->DisablePWM();
-		chooser = new SendableChooser<int*>();
-		chooser->AddDefault("On Left",&one);
-		chooser->AddObject("On Right",&two);
-		chooser->AddObject("Straight", &three);
-		frc::SmartDashboard::PutData("Autonomous Selector", chooser);
 
 	}
 
@@ -54,31 +56,29 @@ private:
 	frc::LiveWindow* lw = frc::LiveWindow::GetInstance();
 	frc::Timer timer;
 	frc::Servo* cameraServo = new Servo(8);
-    frc::Joystick m_stick { 0 };
-    frc::Servo* gateServoLeft =  new Servo(9);
-    frc::Servo* gateServoRight =  new Servo(0);
-    frc::Servo* gearServo =  new Servo(5);
-    frc::Talon winch_motor { 6 };
-   // frc::Talon m2_motor  { 7 };
-    CanTalonSRX  ball_Shooter { 2 };
-    CanTalonSRX ball_Launcher { 1 };
+	frc::Joystick m_stick { 0 };
+	frc::Servo* gateServoLeft = new Servo(9);
+	frc::Servo* gateServoRight = new Servo(0);
+	frc::Servo* gearServo = new Servo(5);
+	frc::Talon winch_motor { 6 };
+	// frc::Talon m2_motor  { 7 };
+	CanTalonSRX ball_Shooter { 2 };
+	CanTalonSRX ball_Launcher { 1 };
 
-    frc::AnalogInput ultrasonic { 0 };
-    static constexpr double kAngleSetpoint = 0.0;
-    static constexpr double kVoltsPerDegreePerSecond = 0.0128;
-    static constexpr int kGyroPort = 0;
+	frc::AnalogInput ultrasonic { 0 };
+	static constexpr double kAngleSetpoint = 0.0;
+	static constexpr double kVoltsPerDegreePerSecond = 0.0128;
+	static constexpr int kGyroPort = 0;
 	static constexpr double kUpdatePeriod = 0.005;
 	static constexpr double kP = 0.005;
 	double cameraDirection;
 	double precisionSpeed;
 	int count;
-	double distanceTraveled, distanceTraveled2;
-	bool autoComplete;
-	bool HaveTurned;
-
+	double distanceTraveled, distanceTraveled2;bool autoComplete;bool HaveTurned;
 
 	void AutonomousInit() override {
 		autoComplete = false;
+		automode = !autocontrol1->Get()*1 + !autocontrol2->Get()*2 + !autocontrol3->Get()*4;
 		timer.Reset();
 		//gyro->Calibrate();
 		timer.Start();
@@ -89,20 +89,56 @@ private:
 		encoder2->Reset();
 		enableLights(true);
 		ResetServos();
-		//mode = 1;
-
-		mode =  (int)chooser->GetSelected();
 
 
 	}
 
-
+	//true=driver perspective right
+	//false=driver perspective left
 	void AutonomousPeriodic() override {
 
-		AutoStraight(false);
+		switch(automode){
+
+		case 0:{ //do nothing
+
+			break;
+		}
+		case 1:{ //go straight when tower left
+			AutoStraight(towerLeft);
+			break;
+		}
+		case 2:{ //go left when tower left
+			AutoAngle(left, towerLeft);
+			break;
+		}
+		case 3:{ //go right when tower left
+			AutoAngle(right, towerLeft);
+			break;
+		}
+		case 4:{ //do nothing
+
+			break;
+		}
+		case 5:{ //go straight when tower right
+			AutoStraight(towerRight);
+			break;
+		}
+		case 6:{ //go left when tower right
+			AutoAngle(left, towerRight);
+			break;
+		}
+		case 7:{ //go right when tower right
+			AutoAngle(right, towerRight);
+			break;
+		}
+		default: {
+
+		}
+
+		}
 	}
 	//Line inner wheels up 4ft from center
-	void AutoAngle(bool onLeft){
+	void AutoAngle(bool onLeft , bool BasketOnLeft) {
 		if (!autoComplete) {
 			Drive(65, 0.45, false);
 			if (onLeft) {
@@ -111,7 +147,7 @@ private:
 			else {
 				Turn(-41);
 			}
-			Drive(25, 0.30, true);
+			Drive(25, 0.35, true);
 
 			if (IsSwitchPress()) {
 				OpenServo();
@@ -121,22 +157,29 @@ private:
 				ResetServos();
 				Drive(-20, -0.45, false);
 				ResetServos();
-				Turn(65);
-				Drive(-26, -0.40, false);
+				if(BasketOnLeft){
+					Turn(65);
+					Drive(-26, -0.40, false);
+				}
+				else {
+					Turn(-65);
+					Drive(-26, -0.40, false); // todo:recalc distances
+				}
+				if (timeLeft()) {
 				ball_Launcher.Set(-1);
 				Wait(.5);
 				ball_Shooter.Set(-1);
-				Wait(10);
+				Wait(12);
 				ball_Launcher.Set(0);
 				ball_Shooter.Set(0);
-
+				}
 			}
 
 			autoComplete = true;
 		}
 
 	}
-
+	//drive without gear
 	void AutoNoGear(){
 		if (!autoComplete) {
 			Drive(10, 0.45, false);
@@ -158,7 +201,7 @@ private:
 	void AutoStraight(bool BasketOnLeft){
 		if (!autoComplete) {
 			Drive(39, 0.55, false);
-			Drive(39, 0.25, true);
+			Drive(39, 0.35, true);
 
 			if (IsSwitchPress()) {
 				OpenServo();
@@ -166,6 +209,7 @@ private:
 				frc::Wait(0.1);
 				Drive(-20, -0.45, false);
 				ResetServos();
+				//true=right from driver perspective
 				if (BasketOnLeft){
 					Turn(65);
 				}
@@ -387,7 +431,7 @@ private:
 	}
 
 	void Turn(float angle){
-		Turn(angle, 0.45);
+		Turn(angle, 0.55);
 
 	}
 	void Turn(float angle, float speed)
