@@ -30,6 +30,8 @@ public:
     bool towerRight = false;
     bool left = true;
     bool right = false;
+    double speedFactor = 1;
+    double turnSpeedFactor = 1;
 
 
 	void RobotInit() {
@@ -39,6 +41,7 @@ public:
 		autocontrol1 = new frc::DigitalInput(5);
 		autocontrol2 = new frc::DigitalInput(6);
 		autocontrol3 = new frc::DigitalInput(7);
+		automode = 0;
 
 		//frc::Wait(kUpdatePeriod);  Wait 5ms for the next update.
 		gyro = new ADXRS450_Gyro(frc::SPI::Port::kOnboardCS0);
@@ -46,6 +49,8 @@ public:
 		encoder = new Encoder(0, 1, false, Encoder::EncodingType::k4X);
 		encoder2 = new Encoder(2, 3, false, Encoder::EncodingType::k4X);
 		indicatorLights->DisablePWM();
+		enableLights(false);
+
 
 	}
 
@@ -87,7 +92,7 @@ private:
 		encoder2->SetDistancePerPulse(1);
 		encoder->Reset();
 		encoder2->Reset();
-		enableLights(true);
+		enableLights(false);
 		ResetServos();
 
 
@@ -96,11 +101,12 @@ private:
 	//true=driver perspective right
 	//false=driver perspective left
 	void AutonomousPeriodic() override {
-
+		//std::cout <<automode << std::endl;
 		switch(automode){
 
 		case 0:{ //do nothing
-
+			timer.Stop();
+			AutoCalibrate();
 			break;
 		}
 		case 1:{ //go straight when tower left
@@ -115,8 +121,19 @@ private:
 			AutoAngle(right, towerLeft);
 			break;
 		}
-		case 4:{ //do nothing
+		case 4: { //do nothing
+			if (count++ == 75) {
+				Log();
+				count = 0;
+			}
 
+			if (IsSwitchPress()) {
+				enableLights(true);
+				//std::cout << "true" << std::endl;
+			} else {
+				enableLights(false);
+				//std::cout << "false" << std::endl;
+			}
 			break;
 		}
 		case 5:{ //go straight when tower right
@@ -139,14 +156,18 @@ private:
 	}
 	//Line inner wheels up 4ft from center
 	void AutoAngle(bool onLeft , bool BasketOnLeft) {
+
 		if (!autoComplete) {
-			Drive(65, 0.45, false);
+			//Drive(65, 0.45, false);
 			if (onLeft) {
-				Turn(39);
+				Drive(75, 0.45, false);
+				Turn(43);
 			}
 			else {
-				Turn(-41);
+				Drive(84, 0.45, false);
+				Turn(-45);
 			}
+
 			Drive(25, 0.35, true);
 
 			if (IsSwitchPress()) {
@@ -155,23 +176,21 @@ private:
 				frc::Wait(0.1);
 				Drive(-24, -0.45, false);
 				ResetServos();
-				Drive(-20, -0.45, false);
+				Drive(-10, -0.45, false);
 				ResetServos();
 				if(BasketOnLeft){
-					Turn(65);
-					Drive(-26, -0.40, false);
+					Turn(26);
+					Drive(-36, -0.40, false);
+
 				}
-				else {
-					Turn(-65);
-					Drive(-26, -0.40, false); // todo:recalc distances
-				}
+
 				if (timeLeft()) {
-				ball_Launcher.Set(-1);
-				Wait(.5);
-				ball_Shooter.Set(-1);
-				Wait(12);
-				ball_Launcher.Set(0);
-				ball_Shooter.Set(0);
+					ball_Launcher.Set(-1);
+					Wait(.5);
+					ball_Shooter.Set(-1);
+					Wait(12);
+					ball_Launcher.Set(0);
+					ball_Shooter.Set(0);
 				}
 			}
 
@@ -196,48 +215,92 @@ private:
 		autoComplete = true;
 	}
 
+	void AutoCalibrate() {
+		if (!autoComplete) {
+			ResetServos();
+			std::cout << "Gate Servo up" << std::endl;
+			OpenServo();
+			Wait(1);
+			std::cout << "Gate Servo down" << std::endl;
+			gearServo->SetAngle(90);
+			std::cout << "Reset Servo" << std::endl;
+			Wait(1);
+			ResetServos();
+			cameraServo->SetAngle(0); //regular driving
+			Wait(0.5);
+			cameraServo->SetAngle(180);     //reverse driving
 
+			ball_Launcher.Set(-1);
+			Wait(1);
+			ball_Launcher.Set(0);
+			ball_Shooter.Set(-1);
+			Wait(1);
+			ball_Shooter.Set(0);
+			Wait(1);
+
+			Drive(60, 0.45, false);
+			Wait(1);
+			Drive(-60, -0.45, false);
+			Wait(1);
+			Turn(90, 0.45);
+			Wait(1);
+			Turn(-90, -0.45
+					);
+			while (!IsSwitchPress()){
+				Wait(0.5);
+			}
+			flashLights();
+			Wait(0.5);
+			winch_motor.Set(-1);
+			Wait(1);
+			winch_motor.Set(-0);
+
+
+		}
+		autoComplete = true;
+
+	}
 
 	void AutoStraight(bool BasketOnLeft){
+
 		if (!autoComplete) {
 			Drive(39, 0.55, false);
-			Drive(39, 0.35, true);
-
-			if (IsSwitchPress()) {
-				OpenServo();
-				KickGear();
-				frc::Wait(0.1);
-				Drive(-20, -0.45, false);
-				ResetServos();
-				//true=right from driver perspective
-				if (BasketOnLeft){
-					Turn(65);
-				}
-				else {
-					Turn(-65);
-				}
-				Drive(-26, -0.40, false);
-				if (timeLeft()) {
-					ball_Launcher.Set(-1);
-					Wait(.5);
-					ball_Shooter.Set(-1);
-					Wait(5);
-					ball_Launcher.Set(0);
-					ball_Shooter.Set(0);
-				}
-			}
-
+			Drive(42, 0.35, true);
 
 			autoComplete = true;
 		}
+		if (IsSwitchPress()) {
+			OpenServo();
+			KickGear();
+			frc::Wait(0.1);
+			Drive(-20, -0.45, false);
+			ResetServos();
+			//true=right from driver perspective
+			if (BasketOnLeft) {
+				Turn(65, 0.55);
+				Drive(-38, -0.40, false);
+			} else {
+				Turn(-65, 0.55);
+				Drive(-38, -0.40, false);
+			}
 
+			if (timeLeft()) {
+				ball_Launcher.Set(-1);
+				Wait(.5);
+				ball_Shooter.Set(-1);
+				Wait(5);
+				ball_Launcher.Set(0);
+				ball_Shooter.Set(0);
+			}
 
+		}
 	}
 
 	void ResetServos(){
 		gateServoLeft->SetAngle(85);
 		gateServoRight->SetAngle(90);
 		gearServo->SetAngle(10);
+		enableLights(false);
 	}
 	void KickGear(){
 		gearServo->SetAngle(90);
@@ -245,14 +308,19 @@ private:
 	void OpenServo(){
 		gateServoLeft->SetAngle(160);
 	   	gateServoRight->SetAngle(0);
+	   	enableLights(true);
 	}
 	void Log() {
-		/*
+
+
+    	std::cout <<automode << std::endl;
 		std::cout << "\nEncoder 1: " << encoder->GetRate() << "\n";
 		std::cout << "Encoder 2: " << encoder2->GetRate() << "\n";
 		std::cout << "Encoder 1 Distance: " << encoder->GetDistance() << "\n";
 		std::cout << "Encoder 2 Distance: " << encoder2->GetDistance() << "\n";
-		*/
+		std::cout << "Switch Pressed:" << IsSwitchPress() << "\n";
+
+
 
 
 	}
@@ -261,8 +329,8 @@ private:
 		double a, b, value;
 		a = encoder->GetDistance();
 		b = encoder2->GetDistance();
-		//value = (a+b)/-200; //competition robot
-		value = (a+b)/200; //Practice robot
+		value = (a+b)/-200; //competition robot
+		//value = (a+b)/200; //Practice robot
 
 		return value;
 
@@ -298,25 +366,25 @@ private:
 		/*******************************************************************************************
 		 * Ouput ultrasonic reading every 75 passes
 		 */
-		if (count++ == 75){
+		/*if (count++ == 75){
 			std::cout << "sonar " << ultrasonic.GetAverageVoltage() / 0.31 << std::endl;
 			std::cout << "encoder rate " << rate  << "|"  <<  rate2 << std::endl;
 			count = 0;
 		}
-
+		*/
 
 //Flip motors with camera direction
-           if(cameraDirection == 1){
-        	   //myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
-        	   myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// practice bot
+           if(cameraDirection != 1){
+        	   myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
+        	   //myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// practice bot
 
         	   //frc::Wait(.004);
 
            }
 
-           else if(cameraDirection != 1){
-        	   //myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
-        	   myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed); //practice bot
+           else if(cameraDirection == 1){
+        	   myRobot.ArcadeDrive(stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed);// competition bot
+        	   //myRobot.ArcadeDrive(-stick.GetY()*precisionSpeed,-stick.GetX()*precisionSpeed); //practice bot
         	  // frc::Wait(.004);
            }
 
@@ -368,6 +436,7 @@ private:
 			{
 			    gateServoLeft->SetAngle(160);
 			    gateServoRight->SetAngle(0);
+			   // indicatorLights->Set(onOff);
 
 
 			}
@@ -376,6 +445,7 @@ private:
             	gateServoLeft->SetAngle(85);
             	gateServoRight->SetAngle(90);
             	gearServo->SetAngle(10);
+            	//indicatorLights->Set(onOff);
             }
 
 
@@ -431,7 +501,7 @@ private:
 	}
 
 	void Turn(float angle){
-		Turn(angle, 0.55);
+		Turn(angle, 0.45);
 
 	}
 	void Turn(float angle, float speed)
@@ -444,18 +514,18 @@ private:
 		while  (fabs(remainingTurn) > 0.05 && timeLeft())  // we are within .5 degrees
 		{
 		//TODO Flip negative and positive for competition
-			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? speed: -1*speed);
+			myRobot.ArcadeDrive(0.0, (remainingTurn < 0.0)? turnSpeedFactor * speed: -1*speed * turnSpeedFactor);
 
 			frc::Wait(.01);
 			remainingTurn = targetHeading - gyro->GetAngle();
-			std::cout << remainingTurn << std::endl;
+			//std::cout << remainingTurn << std::endl;
 
 		}
 		Stop();
 	}
 
 	bool timeLeft(){
-		if (timer.Get() < 17.0 )
+		if (timer.Get() < 18.6 )
 			return true;
 		else {
 			return false;
@@ -464,9 +534,10 @@ private:
 
 	void Drive( double TotalDist, double speed, bool spearArmed) {
 		double featherValue;
+		//std::cout << "Switch Pressed" << IsSwitchPress() << std::endl;
 		do {
 			featherValue = Feather(TotalDist, RecalcDistance());
-			double s = speed * featherValue;
+			double s = speed * speedFactor * featherValue;
 			if (s >= 0 ){
 				myRobot.Drive(s, 1*Straighten());
 			}
@@ -475,10 +546,11 @@ private:
 
 			}
 		}
+		//while (featherValue > 0.02 && !(spearArmed && !IsSwitchPress()) && timeLeft());
+		while (featherValue > 0.02 && (!spearArmed || !IsSwitchPress()) && timeLeft());
 
-		while (featherValue > 0.02 && !(spearArmed && IsSwitchPress()) && timeLeft());
 		if (IsSwitchPress()) {
-			flashLights();
+			enableLights(true);
 		}
 		Stop();
 	}
@@ -486,8 +558,8 @@ private:
 		//double Dist;
 		double DistanceIN;
 		//Dist = encoder->GetDistance();
-		DistanceIN = encoder->GetDistance() /6.325;
-		if (count++ == 25) {
+		DistanceIN = encoder2->GetDistance() /6.325;
+		if (count++ == 75) {
 			Log();
 			count = 0;
 		}
@@ -504,7 +576,15 @@ private:
 	}
 
 	bool IsSwitchPress(){
+		/*if (limitSwitch->Get()){
+			return true;
+		}
+		else {
+			return false;
+		}*/
+
 		return !limitSwitch->Get();
+		//return limitSwitch->Get();
 		//Switch is backwards on proto
 	}
 
